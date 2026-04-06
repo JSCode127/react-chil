@@ -6,12 +6,14 @@ import {
   Tooltip,
   ResponsiveContainer,
   PieChart,
-  Pie
+  Pie,
+  Cell,
+  Legend
 } from "recharts";
 
 type Props = {
   milkData: { date: string; value: number }[];
-  diaperData: { date: string; count: number }[];
+  diaperData: { name: string; value: number; }[];
   sleepData: { date: string; value: number }[];
   viewMode: string;
 };
@@ -49,7 +51,16 @@ function RecordChart({ milkData, diaperData, sleepData, viewMode }: Props) {
 
         {/* 円グラフ */}
         <PieChart width={300} height={200}>
-            <Pie data={diaperData} dataKey="count" nameKey="オムツ回数" fill="#10b981"/>
+            <Pie data={diaperData} dataKey="value" nameKey="name">
+                {diaperData.map((entry) => (
+                <Cell
+                    key={entry.name}
+                    fill={entry.name === "おしっこ" ? "#60a5fa" : "#f59e0b"}
+                />
+                ))}
+            </Pie>
+            <Tooltip formatter={(value, name) => [`${value}回`, name]} />
+            <Legend />
         </PieChart>
     </div>
   );

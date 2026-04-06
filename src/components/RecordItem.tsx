@@ -13,7 +13,8 @@ const getColor = (type: string) => {
 
 const getIcon = (type: string) => {
   if (type === "ミルク") return "🍼";
-  if (type === "オムツ") return "💩";
+  if (type === "おしっこ") return "💦";
+  if (type === "うんち") return "💩";
   if (type === "眠る") return "😴";
   if (type === "起きる") return "🌞";
   if (type === "食事") return "🍴"
@@ -26,7 +27,9 @@ function RecordItem({ record, onDelete, onEdit }: Props) {
         <div>
             <span>{getIcon(record.type)} {record.type}</span>
             <p>{record.value}</p>
-            <p className="text-sm text-gray-500">{record.date}</p>
+            <p className="text-sm text-gray-500">
+              {new Date(record.date).toLocaleString("ja-JP")}
+            </p>
         </div>
 
         <div className="mt-2">

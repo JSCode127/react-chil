@@ -2,12 +2,12 @@ import { useState } from "react";
 import { useEffect } from "react";
 
 import RecordItem from "./components/RecordItem";
-import RecordForm from "./components/RecordForm";
 import RecordChart from "./components/RecordChart";
+import RecordModal from "./components/RecordModal";
 // import ScratchImage from "./components/Scratch";
 
 function App() {
-  const [type, setType] = useState("");
+  const [, setType] = useState("");
   const [value, setValue] = useState("");
   const [activeTab, setActiveTab] = useState<"record" | "chart">("record");
 
@@ -18,15 +18,29 @@ function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
+  const [selectedDate, setSelectedDate] = useState(
+    new Date().toISOString().split("T")[0]
+  );
+  const [viewMode, setViewMode] = useState<"day" | "week">("day");
+
+  const [modalType, setModalType] = useState<string | null>(null);
+
+  const [time, setTime] = useState(
+    new Date().toTimeString().slice(0, 5)
+  );
+
   const milkByDate = Object.values(
     records
       .filter((r) => r.type === "ミルク")
       .reduce<Record<string, { date: string; value: number }>>(
         (acc, r) => {
-          if (!acc[r.date]) {
-            acc[r.date] = { date: r.date, value: 0 };
+          const dateKey = r.date.split("T")[0];
+
+          if (!acc[dateKey]) {
+            acc[dateKey] = { date: dateKey, value: 0 };
           }
-          acc[r.date].value += Number(r.value);
+
+          acc[dateKey].value += Number(r.value);
           return acc;
         },
         {}
@@ -35,17 +49,23 @@ function App() {
 
   const diaperByDate = Object.values(
     records
-      .filter((r) => r.type === "オムツ")
-      .reduce<Record<string, { date: string; count: number }>>(
-        (acc, r) => {
-          if (!acc[r.date]) {
-            acc[r.date] = { date: r.date, count: 0 };
-          }
-          acc[r.date].count++;
-          return acc;
-        },
-        {}
-      )
+      .filter((r) => r.type === "おしっこ" || r.type === "うんち")
+      .reduce<
+        Record<string, { date: string; pee: number; poop: number }>
+      >((acc, r) => {
+        const dateKey = r.date.split("T")[0];
+        if (!acc[dateKey]) {
+          acc[dateKey] = { date: dateKey, pee: 0, poop: 0 };
+        }
+
+        if (r.type === "おしっこ") {
+          acc[dateKey].pee++;
+        } else if (r.type === "うんち") {
+          acc[dateKey].poop++;
+        }
+
+        return acc;
+      }, {})
   );
 
   const sleepByDate = Object.values(
@@ -68,7 +88,7 @@ function App() {
 
         const minutes = (end - start) / (1000 * 60);
 
-        // 👇 日付キー（眠る側を採用）
+        // 日付キー（眠る側を採用）
         const dateKey = current.date;
 
         if (!result[dateKey]) {
@@ -109,15 +129,22 @@ function App() {
 
   const diaperByWeek = Object.values(
     records
-      .filter((r) => r.type === "オムツ")
-      .reduce<Record<string, { date: string; count: number }>>((acc, r) => {
+      .filter((r) => r.type === "おしっこ" || r.type === "うんち")
+      .reduce<
+        Record<string, { date: string; pee: number; poop: number }>
+      >((acc, r) => {
         const weekKey = getWeekKey(r.date);
 
         if (!acc[weekKey]) {
-          acc[weekKey] = { date: weekKey, count: 0 };
+          acc[weekKey] = { date: weekKey, pee: 0, poop: 0 };
         }
 
-        acc[weekKey].count++;
+        if (r.type === "おしっこ") {
+          acc[weekKey].pee++;
+        } else if (r.type === "うんち") {
+          acc[weekKey].poop++;
+        }
+
         return acc;
       }, {})
   );
@@ -142,7 +169,7 @@ function App() {
 
         const minutes = (end - start) / (1000 * 60);
 
-        // 👇 日付キー（眠る側を採用）
+        // 日付キー（眠る側を採用）
         const dateKey = current.date;
 
         if (!result[dateKey]) {
@@ -157,42 +184,39 @@ function App() {
   })()
 );
 
+
+const selectedDiaper = diaperByDate.find(
+  (d) => d.date === selectedDate
+);
+
+const diaperPieData = selectedDiaper
+  ? [
+      { name: "おしっこ", value: selectedDiaper.pee },
+      { name: "うんち", value: selectedDiaper.poop },
+    ]
+  : [];
+
+const selectedWeek = diaperByWeek.find(
+  (d) => d.date === getWeekKey(selectedDate)
+);
+
+const diaperPieWeekData = selectedWeek
+  ? [
+      { name: "おしっこ", value: selectedWeek.pee },
+      { name: "うんち", value: selectedWeek.poop },
+    ]
+  : [];
+
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
-  const addRecord = () => {
-    const newRecord = {
-      type,
-      value,
-      date: selectedDate
-    };
-
-    setRecords([...records, newRecord]);
-
-    setType("");
-    setValue("");
-  };
 
   const startEdit = (index: number) => {
     setEditingIndex(index);
-    setType(records[index].type);
-    setValue(records[index].value);
-  };
 
-  const updateRecord = () => {
-    if (editingIndex === null) return;
-
-    const updatedRecords = [...records];
-    updatedRecords[editingIndex] = {
-      ...updatedRecords[editingIndex],
-      type,
-      value
-    };
-
-    setRecords(updatedRecords);
-    setEditingIndex(null);
-
-    setType("");
-    setValue("");
+    const record = records[index];
+    setType(record.type);
+    setValue(record.value);
+    setModalType(record.type);
   };
 
   const deleteRecord = (index: number) => {
@@ -205,25 +229,24 @@ function App() {
   }, [records]);
 
 
-  const [selectedDate, setSelectedDate] = useState(
-    new Date().toISOString().split("T")[0]
-  );
-  const [viewMode, setViewMode] = useState<"day" | "week">("day");
   const uniqueDates = Array.from(
-    new Set(records.map((r) => r.date))
+    new Set(records.map((r) => r.date.split("T")[0]))
   ).sort();
 
   const filteredRecords = selectedDate
-  ? records.filter((r) => r.date === selectedDate)
+  ? records.filter((r) => r.date.split("T")[0] === selectedDate)
   : records;
 
   const groupedRecords = filteredRecords.reduce<
     Record<string, { type: string; value: string; date: string }[]>
   >((acc, record) => {
-    if (!acc[record.date]) {
-      acc[record.date] = [];
+    const dateKey = record.date.split("T")[0];
+
+    if (!acc[dateKey]) {
+      acc[dateKey] = [];
     }
-    acc[record.date].push(record);
+
+    acc[dateKey].push(record);
     return acc;
   }, {});
   const sortedDates = Object.keys(groupedRecords).sort(
@@ -272,14 +295,54 @@ function App() {
         {/* 表示切り替え */}
         {activeTab === "record" && (
           <>
-            <RecordForm
-              type={type}
-              value={value}
-              setType={setType}
-              setValue={setValue}
-              onSubmit={editingIndex === null ? addRecord : updateRecord}
-              isEditing={editingIndex !== null}
-            />
+          <div className="flex justify-center gap-2 mb-4">
+            <button onClick={() => setModalType("ミルク")}>🍼</button>
+            <button onClick={() => setModalType("おしっこ")}>💧</button>
+            <button onClick={() => setModalType("うんち")}>💩</button>
+            <button onClick={() => setModalType("眠る")}>😴</button>
+            <button onClick={() => setModalType("起きる")}>🌞</button>
+          </div>
+            {modalType && (
+              <RecordModal
+                type={modalType}
+                value={value}
+                time={time}
+                setValue={setValue}
+                setTime={setTime}
+                onClose={() => {
+                  setModalType(null);
+                  setValue("");
+                }}
+                onSubmit={() => {
+                  const newValue =
+                    modalType === "おしっこ" || modalType === "うんち"
+                      ? ""
+                      : value;
+
+                  if (editingIndex !== null) {
+                    const updatedRecords = [...records];
+                    updatedRecords[editingIndex] = {
+                      ...updatedRecords[editingIndex],
+                      type: modalType!,
+                      value: newValue
+                    };
+                    setRecords(updatedRecords);
+                    setEditingIndex(null);
+                  } else {
+                    const newRecord = {
+                      type: modalType!,
+                      value: newValue,
+                      date: `${selectedDate}T${time}`
+                    };
+                    setRecords([...records, newRecord]);
+                  }
+
+                  setModalType(null);
+                  setValue("");
+                }}
+                isEditing={editingIndex !== null}
+              />
+            )}
 
             <h2 className="mt-4">記録一覧</h2>
 
@@ -347,7 +410,7 @@ function App() {
             </div>
           <RecordChart
             milkData={viewMode === "day" ? milkByDate : milkByWeek}
-            diaperData={viewMode === "day" ? diaperByDate : diaperByWeek}
+            diaperData={viewMode === "day" ? diaperPieData : diaperPieWeekData}
             sleepData={viewMode === "day" ? sleepByDate : sleepByWeek}
             viewMode={viewMode}
             />
