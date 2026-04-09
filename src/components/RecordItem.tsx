@@ -2,6 +2,7 @@ type Props = {
   record: { type: string; value: string; date: string };
   onDelete: () => void;
   onEdit: () => void;
+  interval?: string;
 };
 
 const getColor = (type: string) => {
@@ -21,12 +22,17 @@ const getIcon = (type: string) => {
   return "";
 };
 
-function RecordItem({ record, onDelete, onEdit }: Props) {
+function RecordItem({ record, onDelete, onEdit, interval }: Props) {
   return (
     <div className={`${getColor(record.type)} p-2 rounded flex justify-between`}>
         <div>
             <span>{getIcon(record.type)} {record.type}</span>
             <p>{record.value}</p>
+            {interval && (
+              <p className="text-xs text-blue-500">
+                前回から {interval}
+              </p>
+            )}
             <p className="text-sm text-gray-500">
               {new Date(record.date).toLocaleString("ja-JP")}
             </p>

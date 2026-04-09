@@ -23,7 +23,13 @@ function RecordChart({ milkData, diaperData, sleepData, viewMode }: Props) {
         if (diff > 0) return `+${diff} ↑`;
         if (diff < 0) return `${diff} ↓`;
         return "±0";
-        };
+    };
+
+    const formatMinutes = (minutes: number) => {
+        const h = Math.floor(minutes / 60);
+        const m = minutes % 60;
+        return `${h}時間${m}分`;
+    };
 
   return (
     <div className="mt-4">
@@ -32,20 +38,55 @@ function RecordChart({ milkData, diaperData, sleepData, viewMode }: Props) {
         {/* 棒グラフ */}
         <ResponsiveContainer width="100%" height={200}>
             <BarChart data={milkData}>
-                <XAxis dataKey="date" />
+                <XAxis
+                dataKey="date"
+                tickFormatter={(date) =>
+                    new Date(date).toLocaleDateString("ja-JP", {
+                    month: "numeric",
+                    day: "numeric"
+                    })
+                }
+                />
                 <YAxis />
-                <Tooltip formatter={(value, name, props) => {
-                    return [`${value}ml (${formatDiff(props.payload.diff)})`, name];
-                }}/>
+                <Tooltip
+                    formatter={(value, name, props) => {
+                        const diff = props.payload.diff ?? 0;
+                        return [`${value}ml (${formatDiff(diff)})`, name];
+                    }}
+                    />
                 <Bar dataKey="value" fill="#3b82f6" name="ミルク" />
             </BarChart>
         </ResponsiveContainer>
         <ResponsiveContainer width="100%" height={200}>
             <BarChart data={sleepData}>
                 <XAxis dataKey="date" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="value" fill="#ef4444" name="睡眠" />
+                <YAxis
+                tickFormatter={(value) => {
+                    const h = Math.floor(value / 60);
+                    return `${h}h`;
+                }}
+                />
+                <Tooltip
+                formatter={(value) => formatMinutes(Number(value))}
+                />
+                <Bar
+                dataKey="value"
+                fill="#ef4444"
+                name="睡眠"
+                label={{
+                    fill: "#eee",
+                    formatter: (value) => {
+                    const minutes = Number(value);
+
+                    if (isNaN(minutes)) return "";
+
+                    const h = Math.floor(minutes / 60);
+                    const m = minutes % 60;
+
+                    return `${h}h${m}m`;
+                    }
+                }}
+                />
             </BarChart>
         </ResponsiveContainer>
 

@@ -1,33 +1,49 @@
 import { useState } from "react";
 import { useEffect } from "react";
 
+import Calendar from "react-calendar";
+import "react-calendar/dist/Calendar.css";
+
 import RecordItem from "./components/RecordItem";
 import RecordChart from "./components/RecordChart";
 import RecordModal from "./components/RecordModal";
+import DailyNoteModal from "./components/DailyNoteModal";
 // import ScratchImage from "./components/Scratch";
 
 function App() {
   const [, setType] = useState("");
   const [value, setValue] = useState("");
+  //タブ切り替え状態を管理するstate
   const [activeTab, setActiveTab] = useState<"record" | "chart">("record");
-
+  //記録を管理するstate
   const [records, setRecords] = useState<
     { type: string; value: string; date: string }[]
   >(() => {
     const saved = localStorage.getItem("records");
     return saved ? JSON.parse(saved) : [];
   });
-
+  //選択した日付を管理するstate
   const [selectedDate, setSelectedDate] = useState(
     new Date().toISOString().split("T")[0]
   );
+  //日別、週別グラフのタブを管理するstate
   const [viewMode, setViewMode] = useState<"day" | "week">("day");
-
+  //モーダルの開閉状態を管理するstate
   const [modalType, setModalType] = useState<string | null>(null);
-
+  //時間の登録状態を管理するstate
   const [time, setTime] = useState(
     new Date().toTimeString().slice(0, 5)
   );
+  //日記の内容を管理するstate
+  const [dailyNotes, setDailyNotes] = useState<
+    Record<string, { text: string; image: string | null }>
+  >(() => {
+    const saved = localStorage.getItem("dailyNotes");
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [noteText, setNoteText] = useState("");
+  const [noteImage, setNoteImage] = useState<string | null>(null);
+  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
 
   const milkByDate = Object.values(
     records
@@ -45,7 +61,15 @@ function App() {
         },
         {}
       )
-  );
+  ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  .map((item, index, arr) => {
+    if (index === 0) return { ...item, diff: 0 };
+
+    return {
+      ...item,
+      diff: item.value - arr[index - 1].value
+    };
+  });
 
   const diaperByDate = Object.values(
     records
@@ -66,7 +90,7 @@ function App() {
 
         return acc;
       }, {})
-  );
+  ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   const sleepByDate = Object.values(
   (() => {
@@ -101,7 +125,7 @@ function App() {
 
     return result;
   })()
-  );
+  ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   const getWeekKey = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -125,7 +149,15 @@ function App() {
         acc[weekKey].value += Number(r.value);
         return acc;
       }, {})
-  );
+  ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  .map((item, index, arr) => {
+    if (index === 0) return { ...item, diff: 0 };
+
+    return {
+      ...item,
+      diff: item.value - arr[index - 1].value
+    };
+  });
 
   const diaperByWeek = Object.values(
     records
@@ -147,7 +179,7 @@ function App() {
 
         return acc;
       }, {})
-  );
+  ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   const sleepByWeek = Object.values(
   (() => {
@@ -182,7 +214,7 @@ function App() {
 
     return result;
   })()
-);
+  ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
 
 const selectedDiaper = diaperByDate.find(
@@ -206,6 +238,35 @@ const diaperPieWeekData = selectedWeek
       { name: "うんち", value: selectedWeek.poop },
     ]
   : [];
+
+const getMilkIntervals = () => {
+  const milkRecords = records
+    .filter((r) => r.type === "ミルク")
+    .sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+
+  const result: Record<string, string> = {};
+
+  for (let i = 1; i < milkRecords.length; i++) {
+    const prev = milkRecords[i - 1];
+    const current = milkRecords[i];
+
+    const diffMs =
+      new Date(current.date).getTime() -
+      new Date(prev.date).getTime();
+
+    const minutes = Math.floor(diffMs / (1000 * 60));
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+
+    result[current.date] = `${hours}時間${mins}分`;
+  }
+
+  return result;
+};
+
+const milkIntervals = getMilkIntervals();
 
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
@@ -233,25 +294,60 @@ const diaperPieWeekData = selectedWeek
     new Set(records.map((r) => r.date.split("T")[0]))
   ).sort();
 
-  const filteredRecords = selectedDate
-  ? records.filter((r) => r.date.split("T")[0] === selectedDate)
-  : records;
+  const groupedRecords = records
+    .filter((r) => r.date.split("T")[0] === selectedDate)
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-  const groupedRecords = filteredRecords.reduce<
-    Record<string, { type: string; value: string; date: string }[]>
-  >((acc, record) => {
-    const dateKey = record.date.split("T")[0];
+  
+  //日記を保存する
+  const saveNote = () => {
+    const updated = {
+      ...dailyNotes,
+      [selectedDate]: {
+        text: noteText,
+        image: noteImage
+      }
+    };
 
-    if (!acc[dateKey]) {
-      acc[dateKey] = [];
+    setDailyNotes(updated);
+    setIsNoteModalOpen(false);
+  };
+
+  useEffect(() => {
+    localStorage.setItem("dailyNotes", JSON.stringify(dailyNotes));
+  }, [dailyNotes]);
+
+  const note = dailyNotes[selectedDate];
+
+  //カレンダーの記録日フォーマット
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString("sv-SE");
+  };
+
+  //カレンダーアイコン表示用
+  const recordMap: Record<string, Set<string>> = {};
+
+  records.forEach((r) => {
+    const dateKey = r.date.split("T")[0];
+
+    if (!recordMap[dateKey]) {
+      recordMap[dateKey] = new Set();
     }
 
-    acc[dateKey].push(record);
-    return acc;
-  }, {});
-  const sortedDates = Object.keys(groupedRecords).sort(
-    (a, b) => new Date(b).getTime() - new Date(a).getTime()
-  );
+    recordMap[dateKey].add(r.type);
+  });
+
+  const getIcons = (types: Set<string>) => {
+    const icons: string[] = [];
+
+    if (types.has("ミルク")) icons.push("🍼");
+    if (types.has("おしっこ")) icons.push("💧");
+    if (types.has("うんち")) icons.push("💩");
+    if (types.has("眠る") || types.has("起きる")) icons.push("😴");
+
+    return icons;
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center">
       <div className="bg-white p-6 rounded-xl shadow-md w-full max-w-md">
@@ -259,13 +355,31 @@ const diaperPieWeekData = selectedWeek
         <h1 className="text-2xl font-bold text-center mb-4">
           育児記録アプリ
         </h1>
+        <div className="flex justify-center items-center p2 mb-2">
+          <Calendar
+            value={new Date(selectedDate)}
+            onChange={(date) => {
+              const d = date as Date;
+              setSelectedDate(formatDate(d));
+            }}
+            tileContent={({ date }) => {
+              const key = formatDate(date);
+              const types = recordMap[key];
 
-        <input
-          type="date"
-          value={selectedDate}
-          onChange={(e) => setSelectedDate(e.target.value)}
-          className="w-full p-2 border rounded mb-4"
-        />
+              if (!types) return null;
+
+              const icons = getIcons(types);
+
+              return (
+                <div className="text-xs flex justify-center gap-1 mt-1">
+                  {icons.map((icon, i) => (
+                    <span key={i}>{icon}</span>
+                  ))}
+                </div>
+              );
+            }}
+          />
+        </div>
 
         {/* タブ */}
         <div className="flex mb-4">
@@ -301,6 +415,19 @@ const diaperPieWeekData = selectedWeek
             <button onClick={() => setModalType("うんち")}>💩</button>
             <button onClick={() => setModalType("眠る")}>😴</button>
             <button onClick={() => setModalType("起きる")}>🌞</button>
+          </div>
+
+          <div className="flex justify-center gap-2 mb-4">
+            <button 
+              className="p3 border"
+              onClick={() => {
+              const note = dailyNotes[selectedDate] || { text: "", image: null };
+
+              setNoteText(note.text);
+              setNoteImage(note.image);
+              setIsNoteModalOpen(true);
+            }}>日記を書く🖊
+            </button>
           </div>
             {modalType && (
               <RecordModal
@@ -344,6 +471,18 @@ const diaperPieWeekData = selectedWeek
               />
             )}
 
+            {isNoteModalOpen && (
+              <DailyNoteModal
+                date={selectedDate}
+                text={noteText}
+                image={noteImage}
+                setText={setNoteText}
+                setImage={setNoteImage}
+                onClose={() => setIsNoteModalOpen(false)}
+                onSave={saveNote}
+              />
+            )}
+
             <h2 className="mt-4">記録一覧</h2>
 
             <select
@@ -359,16 +498,9 @@ const diaperPieWeekData = selectedWeek
               ))}
             </select>
 
-            {sortedDates.map((date) => (
-              <div key={date} className="mb-4">
-                {/* 日付ヘッダー */}
-                <div className="text-sm text-gray-500 mb-1">
-                  {new Date(date).toLocaleDateString("ja-JP")}
-                </div>
-
                 {/* 中身 */}
                 <div className="space-y-2">
-                  {groupedRecords[date].map((r, i) => {
+                  {groupedRecords.map((r, i) => {
                     const index = records.findIndex(
                       (item) =>
                         item.date === r.date &&
@@ -380,14 +512,24 @@ const diaperPieWeekData = selectedWeek
                       <RecordItem
                         key={i}
                         record={r}
+                        interval={
+                          r.type === "ミルク" ? milkIntervals[r.date] : undefined
+                        }
                         onDelete={() => deleteRecord(index)}
                         onEdit={() => startEdit(index)}
                       />
                     );
                   })}
+
+                  {note && (
+                  <div className="bg-yellow-100 p-2 rounded mb-2">
+                    <p>{note.text}</p>
+                    {note.image && (
+                      <img src={note.image} className="mt-2 rounded" />
+                    )}
+                  </div>
+                )}
                 </div>
-              </div>
-            ))}
           </>
         )}
 
