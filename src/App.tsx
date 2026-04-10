@@ -8,6 +8,7 @@ import RecordItem from "./components/RecordItem";
 import RecordChart from "./components/RecordChart";
 import RecordModal from "./components/RecordModal";
 import DailyNoteModal from "./components/DailyNoteModal";
+import TypeSelectModal from "./components/TypeSelectModal";
 // import ScratchImage from "./components/Scratch";
 
 function App() {
@@ -44,6 +45,8 @@ function App() {
   const [noteText, setNoteText] = useState("");
   const [noteImage, setNoteImage] = useState<string | null>(null);
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+  //種類選択モーダルの開閉状態を管理するstate
+  const [isTypeModalOpen, setIsTypeModalOpen] = useState(false);
 
   const milkByDate = Object.values(
     records
@@ -196,19 +199,30 @@ function App() {
       const next = sleepRecords[i + 1];
 
       if (current.type === "眠る" && next.type === "起きる") {
-        const start = new Date(current.date).getTime();
-        const end = new Date(next.date).getTime();
+        let start = new Date(current.date);
+        const end = new Date(next.date);
 
-        const minutes = (end - start) / (1000 * 60);
+        while (start < end) {
+          const dayEnd = new Date(start);
+          dayEnd.setHours(23, 59, 59, 999);
 
-        // 日付キー（眠る側を採用）
-        const dateKey = current.date;
+          const segmentEnd = end < dayEnd ? end : dayEnd;
 
-        if (!result[dateKey]) {
-          result[dateKey] = { date: dateKey, value: 0 };
+          const minutes =
+            (segmentEnd.getTime() - start.getTime()) / (1000 * 60);
+
+          const dateKey = start.toISOString().split("T")[0];
+
+          if (!result[dateKey]) {
+            result[dateKey] = { date: dateKey, value: 0 };
+          }
+
+          result[dateKey].value += minutes;
+
+          // 次の日へ
+          start = new Date(dayEnd);
+          start.setMilliseconds(start.getMilliseconds() + 1);
         }
-
-        result[dateKey].value += minutes;
       }
     }
 
@@ -347,6 +361,54 @@ const milkIntervals = getMilkIntervals();
 
     return icons;
   };
+  //週のデータを作成する
+  const getWeekRange = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const day = date.getDay(); // 0(日)〜6(土)
+
+    const start = new Date(date);
+    start.setDate(date.getDate() - day); // 日曜始まり
+
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+
+    return { start, end };
+  };
+
+  const { start, end } = getWeekRange(selectedDate);
+
+  const weeklyRecords = records.filter((r) => {
+    const d = new Date(r.date);
+    return d >= start && d <= end;
+  });
+
+  let milkTotal = 0;
+  let peeCount = 0;
+  let poopCount = 0;
+  let sleepMinutes = 0;
+
+  weeklyRecords.forEach((r) => {
+    if (r.type === "ミルク") {
+      milkTotal += Number(r.value);
+    }
+
+    if (r.type === "おしっこ") peeCount++;
+    if (r.type === "うんち") poopCount++;
+  });
+
+  sleepByWeek.forEach((s) => {
+    const d = new Date(s.date);
+
+    if (d >= start && d <= end) {
+      sleepMinutes += s.value;
+    }
+  });
+
+  const formatMinutes = (m: number) => {
+    const h = Math.floor(m / 60);
+    const min = m % 60;
+    return `${h}時間${min}分`;
+  };
 
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center">
@@ -378,7 +440,22 @@ const milkIntervals = getMilkIntervals();
                 </div>
               );
             }}
+            onClickDay={(value) => {
+              const d = value as Date;
+
+              setSelectedDate(formatDate(d));
+              setIsTypeModalOpen(true);
+            }}
           />
+        </div>
+
+        <div className="bg-blue-50 p-4 rounded mt-4">
+          <h2 className="font-semibold mb-2">週間サマリー</h2>
+
+          <p>🍼 ミルク合計：{milkTotal} ml</p>
+          <p>💧 おしっこ：{peeCount} 回</p>
+          <p>💩 うんち：{poopCount} 回</p>
+          <p>😴 睡眠：{formatMinutes(sleepMinutes)}</p>
         </div>
 
         {/* タブ */}
@@ -409,14 +486,6 @@ const milkIntervals = getMilkIntervals();
         {/* 表示切り替え */}
         {activeTab === "record" && (
           <>
-          <div className="flex justify-center gap-2 mb-4">
-            <button onClick={() => setModalType("ミルク")}>🍼</button>
-            <button onClick={() => setModalType("おしっこ")}>💧</button>
-            <button onClick={() => setModalType("うんち")}>💩</button>
-            <button onClick={() => setModalType("眠る")}>😴</button>
-            <button onClick={() => setModalType("起きる")}>🌞</button>
-          </div>
-
           <div className="flex justify-center gap-2 mb-4">
             <button 
               className="p3 border"
@@ -480,6 +549,16 @@ const milkIntervals = getMilkIntervals();
                 setImage={setNoteImage}
                 onClose={() => setIsNoteModalOpen(false)}
                 onSave={saveNote}
+              />
+            )}
+
+            {isTypeModalOpen && (
+              <TypeSelectModal
+                onSelect={(type) => {
+                  setModalType(type);
+                  setIsTypeModalOpen(false);
+                }}
+                onClose={() => setIsTypeModalOpen(false)}
               />
             )}
 
