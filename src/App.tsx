@@ -12,17 +12,22 @@ import TypeSelectModal from "./components/TypeSelectModal";
 // import ScratchImage from "./components/Scratch";
 
 function App() {
+  type RecordType = {
+    id: number;
+    type: string;
+    value: string;
+    date: string;
+  };
+
+
   const [, setType] = useState("");
   const [value, setValue] = useState("");
   //タブ切り替え状態を管理するstate
   const [activeTab, setActiveTab] = useState<"record" | "chart">("record");
   //記録を管理するstate
-  const [records, setRecords] = useState<
-    { type: string; value: string; date: string }[]
-  >(() => {
-    const saved = localStorage.getItem("records");
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [records, setRecords] = useState<RecordType[]>([]);
+  //記録のIDを管理するstate
+  const [editingId, setEditingId] = useState<number | null>(null);
   //選択した日付を管理するstate
   const [selectedDate, setSelectedDate] = useState(
     new Date().toISOString().split("T")[0]
@@ -116,7 +121,7 @@ function App() {
         const minutes = (end - start) / (1000 * 60);
 
         // 日付キー（眠る側を採用）
-        const dateKey = current.date;
+        const dateKey = current.date.split("T")[0];
 
         if (!result[dateKey]) {
           result[dateKey] = { date: dateKey, value: 0 };
@@ -231,78 +236,70 @@ function App() {
   ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
 
-const selectedDiaper = diaperByDate.find(
-  (d) => d.date === selectedDate
-);
+  const selectedDiaper = diaperByDate.find(
+    (d) => d.date === selectedDate
+  );
 
-const diaperPieData = selectedDiaper
-  ? [
-      { name: "おしっこ", value: selectedDiaper.pee },
-      { name: "うんち", value: selectedDiaper.poop },
-    ]
-  : [];
+  const diaperPieData = selectedDiaper
+    ? [
+        { name: "おしっこ", value: selectedDiaper.pee },
+        { name: "うんち", value: selectedDiaper.poop },
+      ]
+    : [];
 
-const selectedWeek = diaperByWeek.find(
-  (d) => d.date === getWeekKey(selectedDate)
-);
+  const selectedWeek = diaperByWeek.find(
+    (d) => d.date === getWeekKey(selectedDate)
+  );
 
-const diaperPieWeekData = selectedWeek
-  ? [
-      { name: "おしっこ", value: selectedWeek.pee },
-      { name: "うんち", value: selectedWeek.poop },
-    ]
-  : [];
+  const diaperPieWeekData = selectedWeek
+    ? [
+        { name: "おしっこ", value: selectedWeek.pee },
+        { name: "うんち", value: selectedWeek.poop },
+      ]
+    : [];
 
-const getMilkIntervals = () => {
-  const milkRecords = records
-    .filter((r) => r.type === "ミルク")
-    .sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
+  const getMilkIntervals = () => {
+    const milkRecords = records
+      .filter((r) => r.type === "ミルク")
+      .sort(
+        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+      );
 
-  const result: Record<string, string> = {};
+    const result: Record<string, string> = {};
 
-  for (let i = 1; i < milkRecords.length; i++) {
-    const prev = milkRecords[i - 1];
-    const current = milkRecords[i];
+    for (let i = 1; i < milkRecords.length; i++) {
+      const prev = milkRecords[i - 1];
+      const current = milkRecords[i];
 
-    const diffMs =
-      new Date(current.date).getTime() -
-      new Date(prev.date).getTime();
+      const diffMs =
+        new Date(current.date).getTime() -
+        new Date(prev.date).getTime();
 
-    const minutes = Math.floor(diffMs / (1000 * 60));
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
+      const minutes = Math.floor(diffMs / (1000 * 60));
+      const hours = Math.floor(minutes / 60);
+      const mins = minutes % 60;
 
-    result[current.date] = `${hours}時間${mins}分`;
-  }
+      result[current.date] = `${hours}時間${mins}分`;
+    }
 
-  return result;
-};
+    return result;
+  };
 
-const milkIntervals = getMilkIntervals();
+  const milkIntervals = getMilkIntervals();
 
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-
-
-  const startEdit = (index: number) => {
-    setEditingIndex(index);
-
-    const record = records[index];
+  const startEdit = (record: RecordType) => {
+    setEditingId(record.id);
     setType(record.type);
     setValue(record.value);
     setModalType(record.type);
   };
+  const deleteRecord = async (id: number) => {
+    await fetch(`http://localhost:3001/records/${id}`, {
+      method: "DELETE"
+    });
 
-  const deleteRecord = (index: number) => {
-    const newRecords = records.filter((_, i) => i !== index);
-    setRecords(newRecords);
+    setRecords((prev) => prev.filter((r) => r.id !== id));
   };
-
-  useEffect(() => {
-    localStorage.setItem("records", JSON.stringify(records));
-  }, [records]);
-
 
   const uniqueDates = Array.from(
     new Set(records.map((r) => r.date.split("T")[0]))
@@ -312,7 +309,7 @@ const milkIntervals = getMilkIntervals();
     .filter((r) => r.date.split("T")[0] === selectedDate)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-  
+
   //日記を保存する
   const saveNote = () => {
     const updated = {
@@ -409,15 +406,70 @@ const milkIntervals = getMilkIntervals();
     const min = m % 60;
     return `${h}時間${min}分`;
   };
+  //DB保存
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const res = await fetch("http://localhost:3001/records");
+        const data = await res.json();
+        setRecords(data);
+      } catch (e) {
+        console.error(e);
+      }
+    };
 
+    fetchData();
+  }, []);
+  const addRecord = async () => {
+    const newRecord = {
+      type: modalType!,
+      value,
+      date: `${selectedDate}T${time}`
+    };
+
+    const res = await fetch("http://localhost:3001/records", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(newRecord)
+    });
+
+    const data = await res.json();
+
+    setRecords((prev) => [...prev, data]);
+  };
+
+  const updateRecord = async (id: number) => {
+    const updated = {
+      type: modalType!,
+      value,
+      date: `${selectedDate}T${time}`
+    };
+
+    const res = await fetch(`http://localhost:3001/records/${id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(updated)
+    });
+
+    const data = await res.json();
+
+    setRecords((prev) =>
+      prev.map((r) => (r.id === id ? data : r))
+    );
+  };
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-      <div className="bg-white p-6 rounded-xl shadow-md w-full max-w-md">
-
-        <h1 className="text-2xl font-bold text-center mb-4">
-          育児記録アプリ
-        </h1>
-        <div className="flex justify-center items-center p2 mb-2">
+    <div className="min-h-screen bg-gray-100">
+      <div className="max-w-md mx-auto bg-white min-h-screen shadow-lg relative pb-24">
+        <div className="sticky top-0 bg-white z-10 p-4 border-b">
+          <h1 className="text-xl font-bold text-center">
+            育児記録
+          </h1>
+        </div>
+        <div className="bg-white rounded-xl shadow p-2 mb-4 flex justify-center">
           <Calendar
             value={new Date(selectedDate)}
             onChange={(date) => {
@@ -449,37 +501,35 @@ const milkIntervals = getMilkIntervals();
           />
         </div>
 
-        <div className="bg-blue-50 p-4 rounded mt-4">
-          <h2 className="font-semibold mb-2">週間サマリー</h2>
-
-          <p>🍼 ミルク合計：{milkTotal} ml</p>
-          <p>💧 おしっこ：{peeCount} 回</p>
-          <p>💩 うんち：{poopCount} 回</p>
-          <p>😴 睡眠：{formatMinutes(sleepMinutes)}</p>
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <div className="bg-blue-50 p-3 rounded">
+            🍼 {milkTotal}ml
+          </div>
+          <div className="bg-green-50 p-3 rounded">
+            💧 {peeCount}回
+          </div>
+          <div className="bg-yellow-50 p-3 rounded">
+            💩 {poopCount}回
+          </div>
+          <div className="bg-purple-50 p-3 rounded">
+            😴 {formatMinutes(sleepMinutes)}
+          </div>
         </div>
 
         {/* タブ */}
-        <div className="flex mb-4">
+        <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t flex">
           <button
-            className={`flex-1 p-2 ${
-              activeTab === "record"
-                ? "bg-blue-500 text-white"
-                : "bg-gray-200"
-            }`}
+            className={`flex-1 p-3 ${activeTab === "record" ? "text-blue-500" : ""}`}
             onClick={() => setActiveTab("record")}
           >
-            記録
+            📋 記録
           </button>
 
           <button
-            className={`flex-1 p-2 ${
-              activeTab === "chart"
-                ? "bg-blue-500 text-white"
-                : "bg-gray-200"
-            }`}
+            className={`flex-1 p-3 ${activeTab === "chart" ? "text-blue-500" : ""}`}
             onClick={() => setActiveTab("chart")}
           >
-            グラフ
+            📊 グラフ
           </button>
         </div>
 
@@ -510,33 +560,17 @@ const milkIntervals = getMilkIntervals();
                   setValue("");
                 }}
                 onSubmit={() => {
-                  const newValue =
-                    modalType === "おしっこ" || modalType === "うんち"
-                      ? ""
-                      : value;
-
-                  if (editingIndex !== null) {
-                    const updatedRecords = [...records];
-                    updatedRecords[editingIndex] = {
-                      ...updatedRecords[editingIndex],
-                      type: modalType!,
-                      value: newValue
-                    };
-                    setRecords(updatedRecords);
-                    setEditingIndex(null);
+                  if (editingId !== null) {
+                    updateRecord(editingId);
                   } else {
-                    const newRecord = {
-                      type: modalType!,
-                      value: newValue,
-                      date: `${selectedDate}T${time}`
-                    };
-                    setRecords([...records, newRecord]);
+                    addRecord();
                   }
 
+                  setEditingId(null);
                   setModalType(null);
                   setValue("");
                 }}
-                isEditing={editingIndex !== null}
+                isEditing={editingId !== null}
               />
             )}
 
@@ -579,24 +613,20 @@ const milkIntervals = getMilkIntervals();
 
                 {/* 中身 */}
                 <div className="space-y-2">
-                  {groupedRecords.map((r, i) => {
-                    const index = records.findIndex(
-                      (item) =>
-                        item.date === r.date &&
-                        item.type === r.type &&
-                        item.value === r.value
-                    );
+                  {groupedRecords.map((r) => {
 
                     return (
-                      <RecordItem
-                        key={i}
-                        record={r}
-                        interval={
-                          r.type === "ミルク" ? milkIntervals[r.date] : undefined
-                        }
-                        onDelete={() => deleteRecord(index)}
-                        onEdit={() => startEdit(index)}
-                      />
+                      <div className="bg-white rounded-lg shadow p-3">
+                        <RecordItem
+                          key={r.id}
+                          record={r}
+                          interval={
+                            r.type === "ミルク" ? milkIntervals[r.date] : undefined
+                          }
+                          onDelete={() => deleteRecord(r.id)}
+                          onEdit={() => startEdit(r)}
+                        />
+                      </div>
                     );
                   })}
 
@@ -637,6 +667,12 @@ const milkIntervals = getMilkIntervals();
             />
           </>
         )}
+      <button
+        onClick={() => setIsTypeModalOpen(true)}
+        className="fixed bottom-20 right-80 w-14 h-14 bg-blue-500 text-white rounded-full shadow-lg text-2xl"
+      >
+        ＋
+      </button>
       </div>
     </div>
   );
