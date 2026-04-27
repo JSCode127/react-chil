@@ -9,7 +9,7 @@ import RecordChart from "./components/RecordChart";
 import RecordModal from "./components/RecordModal";
 import DailyNoteModal from "./components/DailyNoteModal";
 import TypeSelectModal from "./components/TypeSelectModal";
-// import ScratchImage from "./components/Scratch";
+import LoginPage from "./Login";
 
 function App() {
   type RecordType = {
@@ -52,6 +52,13 @@ function App() {
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   //種類選択モーダルの開閉状態を管理するstate
   const [isTypeModalOpen, setIsTypeModalOpen] = useState(false);
+
+  //ログイントークン
+  const token = localStorage.getItem("token");
+
+  const [isLoggedIn, setIsLoggedIn] = useState(
+    !!localStorage.getItem("token")
+  );
 
   const milkByDate = Object.values(
     records
@@ -410,7 +417,12 @@ function App() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await fetch("http://localhost:3001/records");
+        const res = await fetch("http://localhost:3001/records", 
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
         const data = await res.json();
         setRecords(data);
       } catch (e) {
@@ -430,7 +442,8 @@ function App() {
     const res = await fetch("http://localhost:3001/records", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
       },
       body: JSON.stringify(newRecord)
     });
@@ -461,6 +474,13 @@ function App() {
       prev.map((r) => (r.id === id ? data : r))
     );
   };
+
+    //ログインページ遷移
+  if (!isLoggedIn) {
+    return <LoginPage 
+    onLogin={() => setIsLoggedIn(true)} 
+    />;
+  }
   return (
     <div className="min-h-screen bg-gray-100">
       <div className="max-w-md mx-auto bg-white min-h-screen shadow-lg relative pb-24">
